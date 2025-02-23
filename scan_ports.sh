@@ -5,7 +5,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # Sin color
+NC='\033[0m'
 
 # Comprobamos que el usuario haya introducido una IP
 if [ -z "$1" ]; then
@@ -15,26 +15,35 @@ fi
 
 IP=$1
 PORT=80
+ALL_PORTS=false
 
-# Comprobamos si se ha proporcionado un puerto usando -p, de lo contrario, usamos el puerto 80 por defecto
 shift
-while getopts "p:" opt; do
-  case $opt in
-    p)
-      PORT=$OPTARG
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -p)
+      PORT=$2
+      shift
+      ;;
+    --all-ports)
+      ALL_PORTS=true
       ;;
     *)
-      echo -e "${RED}Opción inválida. Usa -p para especificar un puerto.${NC}"
+      echo -e "${RED}Opción inválida. Usa -p para especificar un puerto o --all-ports para escanear todos los puertos.${NC}"
       exit 1
       ;;
   esac
+  shift
 done
 
 # Función para escanear servicios y versiones
 scan_services() {
-    echo -e "${BLUE}Escaneando servicios y versiones en ${IP}...${NC}"
-    echo -e "${YELLOW}Ejecutando comando: sudo nmap -sS -sC -sV -p$PORT $IP${NC}"
-    result=$(sudo nmap -sS -sC -sV -p$PORT $IP)
+    if [ "$ALL_PORTS" = true ]; then
+        echo -e "${BLUE}Escaneando todos los puertos en ${IP}...${NC}"
+        result=$(sudo nmap -sS -sC -sV $IP)
+    else
+        echo -e "${BLUE}Escaneando servicios y versiones en ${IP} en el puerto ${PORT}...${NC}"
+        result=$(sudo nmap -sS -sC -sV -p$PORT $IP)
+    fi
     
     echo -e "${GREEN}Reporte de Nmap para ${IP}:${NC}"
     echo -e "${GREEN}$result${NC}"
@@ -42,9 +51,13 @@ scan_services() {
 
 # Función para escanear con dirección MAC falsa
 scan_services_spoof() {
-    echo -e "${YELLOW}Escaneando servicios y versiones en ${IP} con MAC falsa...${NC}"
-    echo -e "${GREEN}Ejecutando comando: sudo nmap -sS -sC -sV -p$PORT --spoof-mac 0 $IP${NC}"
-    result=$(sudo nmap -sS -sC -sV -p$PORT --spoof-mac 0 $IP)
+    if [ "$ALL_PORTS" = true ]; then
+        echo -e "${YELLOW}Escaneando todos los puertos en ${IP} con MAC falsa...${NC}"
+        result=$(sudo nmap -sS -sC -sV --spoof-mac 0 $IP)
+    else
+        echo -e "${YELLOW}Escaneando servicios y versiones en ${IP} con MAC falsa en el puerto ${PORT}...${NC}"
+        result=$(sudo nmap -sS -sC -sV --spoof-mac 0 -p$PORT $IP)
+    fi
     
     echo -e "${YELLOW}Reporte de Nmap para ${IP} con MAC falsificada:${NC}"
     echo -e "${GREEN}$result${NC}"
@@ -52,9 +65,13 @@ scan_services_spoof() {
 
 # Función para escanear vulnerabilidades
 scan_vulnerabilities() {
-    echo -e "${BLUE}Escaneando vulnerabilidades en ${IP} en el puerto $PORT...${NC}"
-    echo -e "${YELLOW}Ejecutando comando: sudo nmap --script vuln -p$PORT $IP${NC}"
-    result=$(sudo nmap --script "vuln" -p$PORT $IP)
+    if [ "$ALL_PORTS" = true ]; then
+        echo -e "${BLUE}Escaneando vulnerabilidades en todos los puertos de ${IP}...${NC}"
+        result=$(sudo nmap --script "vuln" $IP)
+    else
+        echo -e "${BLUE}Escaneando vulnerabilidades en ${IP} en el puerto ${PORT}...${NC}"
+        result=$(sudo nmap --script "vuln" -p$PORT $IP)
+    fi
     
     echo -e "${GREEN}Reporte de vulnerabilidades para ${IP} en el puerto ${PORT}:${NC}"
     echo -e "${GREEN}$result${NC}"
@@ -62,10 +79,13 @@ scan_vulnerabilities() {
 
 # Función para escanear el puerto sin realizar ping
 scan_port_no_ping() {
-    echo -e "${BLUE}Escaneando el puerto ${PORT} en ${IP} sin realizar ping...${NC}"
-    echo -e "${YELLOW}Ejecutando comando: sudo nmap -sS -sV -p $PORT -Pn $IP${NC}"
-    
-    result=$(sudo nmap -sS -sV -p $PORT -Pn $IP)
+    if [ "$ALL_PORTS" = true ]; then
+        echo -e "${BLUE}Escaneando todos los puertos en ${IP} sin realizar ping...${NC}"
+        result=$(sudo nmap -sS -sV -Pn $IP)
+    else
+        echo -e "${BLUE}Escaneando el puerto ${PORT} en ${IP} sin realizar ping...${NC}"
+        result=$(sudo nmap -sS -sV -p$PORT -Pn $IP)
+    fi
     
     echo -e "${GREEN}Reporte de Nmap para el puerto ${PORT} en ${IP}:${NC}"
     echo -e "${GREEN}$result${NC}"
@@ -73,33 +93,41 @@ scan_port_no_ping() {
 
 # Menú interactivo
 while true; do
-    echo -e "${YELLOW}¿Qué quieres hacer?${NC}"
-    echo -e "${GREEN}1) Reporte de servicios y versiones en el puerto ${PORT}${NC}"
-    echo -e "${GREEN}2) Reporte de servicios y versiones (cambiando la MAC) en el puerto ${PORT}${NC}"
-    echo -e "${GREEN}3) Escaneo de vulnerabilidades en el puerto ${PORT}${NC}"
-    echo -e "${GREEN}4) Escaneo del puerto ${PORT} sin realizar ping${NC}"
+    if [ "$ALL_PORTS" = true ]; then
+        echo -e "${YELLOW}¿Qué quieres hacer? (Escaneando todos los puertos en ${IP})${NC}"
+        echo -e "${GREEN}1) Reporte de servicios y versiones en todos los puertos${NC}"
+        echo -e "${GREEN}2) Reporte de servicios y versiones (cambiando la MAC) en todos los puertos${NC}"
+        echo -e "${GREEN}3) Escaneo de vulnerabilidades en todos los puertos${NC}"
+        echo -e "${GREEN}4) Escaneo de todos los puertos sin realizar ping${NC}"
+    else
+        echo -e "${YELLOW}¿Qué quieres hacer?${NC}"
+        echo -e "${GREEN}1) Reporte de servicios y versiones en el puerto ${PORT}${NC}"
+        echo -e "${GREEN}2) Reporte de servicios y versiones (cambiando la MAC) en el puerto ${PORT}${NC}"
+        echo -e "${GREEN}3) Escaneo de vulnerabilidades en el puerto ${PORT}${NC}"
+        echo -e "${GREEN}4) Escaneo del puerto ${PORT} sin realizar ping${NC}"
+    fi
     echo -e "${RED}5) Salir${NC}"
     
     read -p "Selecciona una opción (1, 2, 3, 4 o 5): " opcion
 
     case $opcion in
         1)
-            echo -e "${GREEN}Seleccionaste reporte de servicios y versiones en el puerto ${PORT}.${NC}"
+            echo -e "${GREEN}Seleccionaste reporte de servicios y versiones.${NC}"
             scan_services
             break
             ;;
         2)
-            echo -e "${GREEN}Seleccionaste reporte de servicios y versiones (cambiando la MAC) en el puerto ${PORT}.${NC}"
+            echo -e "${GREEN}Seleccionaste reporte de servicios y versiones (cambiando la MAC).${NC}"
             scan_services_spoof
             break
             ;;
         3)
-            echo -e "${GREEN}Seleccionaste escaneo de vulnerabilidades en el puerto ${PORT}.${NC}"
+            echo -e "${GREEN}Seleccionaste escaneo de vulnerabilidades.${NC}"
             scan_vulnerabilities
             break
             ;;
         4)
-            echo -e "${GREEN}Seleccionaste escaneo del puerto ${PORT} sin realizar ping.${NC}"
+            echo -e "${GREEN}Seleccionaste escaneo del puerto sin realizar ping.${NC}"
             scan_port_no_ping
             break
             ;;
